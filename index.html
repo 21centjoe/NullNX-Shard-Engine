@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NullNX Shard Engine</title>
+<!-- AGPL-3.0-or-later. Standalone: no network, no libraries. Open in any modern browser. -->
+<style>
+:root{--bg:#020408;--panel:#060d10;--line:#0a2020;--nx:#00ffcc;--nx2:#00cc99;--cr:#c81f3f;--dim:#4a6a6a;--warn:#ffaa00;--text:#e8f4f0}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:14px/1.55 ui-monospace,"DejaVu Sans Mono",Menlo,monospace}
+main{max-width:1060px;margin:0 auto;padding:24px 18px 50px}
+h1{margin:0;text-align:center;color:var(--nx);font-size:1.6rem;letter-spacing:.1em;text-shadow:0 0 24px rgba(0,255,204,.3)}
+.sub{color:var(--dim);text-align:center;margin:6px auto 18px;max-width:72ch;font-size:.85rem}
+.grid{display:grid;grid-template-columns:minmax(0,1fr) 330px;gap:16px}
+@media(max-width:820px){.grid{grid-template-columns:1fr}}
+canvas{width:100%;height:430px;background:var(--panel);border:1px solid var(--nx2);border-radius:8px}
+aside{display:flex;flex-direction:column;gap:12px}
+label{display:flex;flex-direction:column;gap:3px;color:var(--dim);font-size:.75rem}
+select,button{font:inherit;background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:4px;padding:6px 8px}
+button{color:var(--nx);border-color:var(--nx);cursor:pointer}
+button:disabled{opacity:.5;cursor:wait}
+.chk{flex-direction:row;align-items:center;gap:8px}
+.pipe{display:flex;gap:4px;flex-wrap:wrap;margin:12px 0 0}
+.pipe span{border:1px solid var(--dim);color:var(--dim);border-radius:12px;padding:2px 10px;font-size:.72rem}
+.pipe span.on{border-color:var(--nx);color:var(--nx);background:var(--line)}
+pre{margin:0;padding:12px;background:var(--panel);border:1px solid var(--line);border-radius:6px;white-space:pre-wrap;font:inherit;font-size:.8rem}
+.ok{color:var(--nx)}.bad{color:var(--cr)}
+.note{color:var(--dim);font-size:.75rem;margin:0}
+h2{font-size:.8rem;letter-spacing:.12em;color:var(--warn);margin:24px 0 8px}
+.calc{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px}
+@media(max-width:820px){.calc{grid-template-columns:1fr}}
+.box{background:var(--panel);border:1px solid var(--nx2);border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:8px}
+#expr{font:inherit;font-size:1rem;background:var(--bg);color:var(--warn);border:1px solid var(--line);border-radius:4px;padding:8px;width:100%}
+.prev{color:var(--dim);min-height:1.5em;font-size:.85rem;word-break:break-all}
+.res{color:var(--nx);font-size:1.25rem;min-height:1.6em;word-break:break-all}
+.res.bad{color:var(--cr);font-size:.85rem}
+.keys{display:grid;grid-template-columns:repeat(6,1fr);gap:5px}
+.keys button{padding:8px 2px;font-size:.78rem;color:var(--text);border-color:var(--line)}
+.keys button.op{color:var(--nx2)}.keys button.eq{color:#000;background:var(--nx);border-color:var(--nx)}
+.bar{display:flex;gap:6px;flex-wrap:wrap;align-items:center;color:var(--dim);font-size:.75rem}
+.bar input{width:70px;font:inherit;background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:4px;padding:4px}
+#wv{height:210px}
+#tape{max-height:150px;overflow:auto;font-size:.74rem}
+.rec{color:var(--cr)!important;border-color:var(--cr)!important}
+</style>
+</head>
+<body>
+<main>
+<h1>NULLNX SHARD ENGINE</h1>
+<p class="sub">One job is divided into 60 shards, one per C60 vertex, run across your CPU cores, then derived into a single answer and checked against known values.</p>
+<div class="grid">
+  <canvas id="cv" aria-label="C60 cage; each vertex is one shard"></canvas>
+  <aside>
+    <label>Job
+      <select id="job"><option value="p">Count primes up to N</option><option value="z">Count Riemann zeta zeros up to T</option></select></label>
+    <label>Size <select id="size"></select></label>
+    <label>Workers <select id="nw"></select></label>
+    <label class="chk"><input type="checkbox" id="base" checked> also run on 1 worker for true speedup</label>
+    <button id="go">Run</button>
+    <pre id="out">Ready.</pre>
+    <pre id="clk"></pre>
+  </aside>
+</div>
+<div class="pipe" id="pipe"></div>
+<h2>SCIENTIFIC CALCULATOR · WAVES · NULLNX COMMANDS</h2>
+<div class="calc">
+  <div class="box">
+    <input id="expr" autocomplete="off" spellcheck="false" value="sin(x)+sin(3*x)/3" aria-label="Expression">
+    <div class="prev" id="prev"></div>
+    <div class="res" id="res"></div>
+    <div class="keys" id="keys"></div>
+    <label class="chk"><input type="checkbox" id="ecc"> Hamming-wrap nx() payload bytes</label>
+    <p class="note">Commands: <b>primes(N)</b> and <b>zeros(T)</b> run on the shard engine above. <b>nx(v)</b> encapsulates an integer as NullNX STATE cells (00, then 26 [face] [byte]). <b>unnx(hex)</b> decodes one. Use <b>x</b> to draw a wave.</p>
+  </div>
+  <div class="box">
+    <div class="bar"><select id="wmode"><option value="fx">Wave: f(x)</option><option value="tape">Wave: recorded results</option><option value="stream">Wave: last NullNX stream</option></select>
+      x <input id="x0" value="0"> to <input id="x1" value="720"></div>
+    <canvas id="wv" aria-label="Wave visualization"></canvas>
+    <div class="bar"><button id="recbtn">● Record</button><button id="dl">Download CSV</button><button id="clr">Clear tape</button></div>
+    <pre id="tape">Tape is empty. Press Record, then = to log results.</pre>
+  </div>
+</div>
+<p class="note" style="margin-top:14px">All nodes here are local Web Workers. A standalone page cannot reach outside machines such as observatory clocks or other clusters; that would need a server you run. Timing uses your browser's timer, which browsers deliberately round to tens of microseconds or coarser.</p>
+</main>
+<script>
+"use strict";
+/*CORE*/
+function primeCount(lo, hi) { // primes in [lo, hi)
+  if (lo < 2) lo = 2; if (lo >= hi) return 0;
+  const r = Math.floor(Math.sqrt(hi)) + 1, small = new Uint8Array(r + 1), ps = [];
+  for (let i = 2; i <= r; i++) if (!small[i]) { ps.push(i); for (let j = i * i; j <= r; j += i) small[j] = 1; }
+  const seg = new Uint8Array(hi - lo);
+  for (const p of ps) { for (let j = Math.max(p * p, Math.ceil(lo / p) * p); j < hi; j += p) seg[j - lo] = 1; }
+  let c = 0; for (let i = 0; i < seg.length; i++) if (!seg[i]) c++;
+  return c;
+}
+function zeroCount(a, b, h) { // sign changes of Hardy Z (Riemann-Siegel, first correction) on samples a..b
+  const TP = 2 * Math.PI;
+  const Z = t => {
+    const x = t / TP, A = Math.sqrt(x), N = Math.floor(A), p = A - N;
+    const th = t / 2 * Math.log(x) - t / 2 - Math.PI / 8 + 1 / (48 * t) + 7 / (5760 * t * t * t);
+    let s = 0; for (let k = 1; k <= N; k++) s += Math.cos(th - t * Math.log(k)) / Math.sqrt(k);
+    return 2 * s + (N % 2 ? 1 : -1) * Math.pow(x, -0.25) * Math.cos(TP * (p * p - p - 1 / 16)) / Math.cos(TP * p);
+  };
+  let prev = Z(10 + a * h), c = 0;
+  for (let j = a + 1; j <= b; j++) { const z = Z(10 + j * h); if (prev * z < 0) c++; prev = z; }
+  return c;
+}
+const H = 0.01, KNOWN = { p: { 1e7: 664579, 1e8: 5761455, 1e9: 50847534 }, z: { 1e3: 649, 1e4: 10142, 1e5: 138069 } };
+const bounds = (total, n) => Array.from({ length: n }, (_, i) => [Math.floor(i * total / n), Math.floor((i + 1) * total / n)]);
+/*END*/
+
+const $ = s => document.querySelector(s);
+const SRC = primeCount + zeroCount + `onmessage=e=>{const t=performance.now(),{job,args}=e.data;
+  const v=job==='p'?primeCount(args[0],args[1]):zeroCount(args[0],args[1],${H});postMessage({v,ms:performance.now()-t})}`;
+const WURL = URL.createObjectURL(new Blob([SRC], { type: 'text/javascript' }));
+const SIZES = { p: [1e7, 1e8, 3e8, 1e9], z: [1e3, 1e4, 1e5] };
+const fmt = n => n >= 1e3 ? n.toExponential(0).replace('e+', '×10^') : String(n);
+
+/* C60 vertices (even permutations of the golden-ratio triples) */
+const PHI = (1 + Math.sqrt(5)) / 2, V = [], seen = new Set();
+for (const [a, b, c] of [[0, 1, 3 * PHI], [1, 2 + PHI, 2 * PHI], [PHI, 2, 2 * PHI + 1]])
+  for (const sa of [1, -1]) for (const sb of [1, -1]) for (const sc of [1, -1])
+    for (const p of [[a * sa, b * sb, c * sc], [b * sb, c * sc, a * sa], [c * sc, a * sa, b * sb]]) {
+      const k = p.map(x => x.toFixed(4)).join(); if (!seen.has(k)) { seen.add(k); V.push(p); } }
+const E = []; for (let i = 0; i < 60; i++) for (let j = i + 1; j < 60; j++)
+  if (Math.abs(V[i].reduce((s, x, k) => s + (x - V[j][k]) ** 2, 0) - 4) < .01) E.push([i, j]);
+
+let state = new Array(60).fill(null), ang = 0;
+function draw() {
+  const cv = $('#cv'), r = devicePixelRatio || 1, w = cv.clientWidth, h = cv.clientHeight;
+  cv.width = w * r; cv.height = h * r; const g = cv.getContext('2d'); g.setTransform(r, 0, 0, r, 0, 0);
+  const cy = Math.cos(ang), sy = Math.sin(ang), cx = Math.cos(.5), sx = Math.sin(.5), s = Math.min(w, h) / 12;
+  const P = V.map(([x, y, z]) => { const x1 = x * cy + z * sy, z1 = -x * sy + z * cy; return [w / 2 + x1 * s, h / 2 - (y * cx - z1 * sx) * s, y * sx + z1 * cx]; });
+  g.strokeStyle = 'rgba(0,204,153,.25)'; g.lineWidth = 1;
+  for (const [i, j] of E) { g.beginPath(); g.moveTo(P[i][0], P[i][1]); g.lineTo(P[j][0], P[j][1]); g.stroke(); }
+  const mx = Math.max(1, ...state.map(x => x ? x.ms : 0));
+  P.forEach((p, i) => { const st = state[i];
+    g.fillStyle = st ? `hsl(${170 - 170 * st.ms / mx},100%,55%)` : '#2a4a5a';
+    g.beginPath(); g.arc(p[0], p[1], st ? 6 : 4, 0, 6.283); g.fill(); });
+}
+setInterval(() => { ang += .01; draw(); }, 50);
+
+/* pool: workers pull the next shard when free */
+function runPool(job, shards, nw, onDone) {
+  return new Promise((res, rej) => {
+    const ws = [], out = new Array(shards.length), q = shards.map((_, i) => i); let done = 0; const t0 = performance.now();
+    const next = w => { if (!q.length) return; w.i = q.shift(); w.postMessage({ job, args: shards[w.i] }); };
+    for (let k = 0; k < nw; k++) {
+      const w = new Worker(WURL); ws.push(w);
+      w.onerror = e => { ws.forEach(x => x.terminate()); rej(new Error(e.message || 'worker failed')); };
+      w.onmessage = e => { out[w.i] = e.data; onDone(w.i, e.data); done++;
+        if (done === shards.length) { ws.forEach(x => x.terminate()); res({ out, wall: performance.now() - t0 }); } else next(w); };
+      next(w);
+    }
+  });
+}
+const STAGES = ['Expand', 'Function', 'Arrange', 'Divide', 'Derive'];
+$('#pipe').innerHTML = STAGES.map(s => `<span>${s}</span>`).join('');
+const stage = i => [...$('#pipe').children].forEach((c, k) => c.classList.toggle('on', k === i));
+const pause = () => new Promise(r => setTimeout(r, 120));
+
+async function go() {
+  const job = $('#job').value, N = +$('#size').value, nw = +$('#nw').value, btn = $('#go');
+  btn.disabled = true; state = new Array(60).fill(null); $('#out').className = ''; $('#out').textContent = 'Running…';
+  try {
+    stage(0); await pause();                                             // expand: the 60-vertex lattice is the shard map
+    stage(3); const total = job === 'p' ? N : Math.floor((N - 10) / H);   // divide the range into 60 shards
+    const shards = bounds(total, 60).map(([a, b]) => job === 'p' ? [a, b] : [a, b]); await pause();
+    stage(2); await pause();                                             // arrange: queue shards onto workers
+    stage(1); const par = await runPool(job, shards, nw, (i, d) => { state[i] = d; });   // function: run the kernel
+    stage(4); const val = par.out.reduce((s, d) => s + d.v, 0), cpu = par.out.reduce((s, d) => s + d.ms, 0);  // derive
+    let txt = `${job === 'p' ? 'Primes ≤ ' : 'Zeros with t ≤ '}${fmt(N)}: ${val.toLocaleString()}\n`;
+    const ref = KNOWN[job][N];
+    txt += ref === undefined ? 'No reference value stored for this size.\n' : val === ref ? `Reference ${ref.toLocaleString()}: MATCH\n` : `Reference ${ref.toLocaleString()}: off by ${val - ref}\n`;
+    txt += `\n${nw} workers, 60 shards\nWall time     ${(par.wall / 1000).toFixed(3)} s\nSum of shards ${(cpu / 1000).toFixed(3)} s\n`;
+    if ($('#base').checked && nw > 1) {
+      $('#out').textContent = txt + '\nRunning 1-worker baseline…';
+      const one = await runPool(job, shards, 1, () => {}), v1 = one.out.reduce((s, d) => s + d.v, 0);
+      txt += `1 worker      ${(one.wall / 1000).toFixed(3)} s\nSpeedup       ${(one.wall / par.wall).toFixed(2)}×\nSame answer   ${v1 === val ? 'yes' : 'NO (' + v1 + ')'}\n`;
+    }
+    $('#out').textContent = txt; $('#out').className = ref === undefined || val === ref ? 'ok' : 'bad';
+  } catch (e) { $('#out').textContent = 'Error: ' + e.message; $('#out').className = 'bad'; }
+  stage(-1); btn.disabled = false;
+}
+
+function fillSizes() { $('#size').innerHTML = SIZES[$('#job').value].map((n, i) => `<option value="${n}" ${i === 1 ? 'selected' : ''}>${fmt(n)}</option>`).join(''); }
+const cores = navigator.hardwareConcurrency || 4;
+$('#nw').innerHTML = Array.from({ length: Math.min(cores, 32) }, (_, i) => `<option ${i + 1 === cores ? 'selected' : ''}>${i + 1}</option>`).join('');
+$('#job').onchange = fillSizes; $('#go').onclick = go; fillSizes();
+
+/*CALC*/
+const CALC = { deg: true, ans: 0, bytes: [] };
+function hEnc(v) {
+  const DP = [3,5,6,7,9,10,11,12], c = Array(14).fill(0);
+  DP.forEach((p, k) => c[p] = (v >> k) & 1);
+  for (const p of [1,2,4,8]) { let s = 0; for (let i = 1; i <= 12; i++) if ((i & p) && i !== p) s ^= c[i]; c[p] = s; }
+  let o = 0; for (let i = 1; i <= 12; i++) o ^= c[i]; c[13] = o; return c.slice(1);
+}
+function hDec(bits) {
+  const DP = [3,5,6,7,9,10,11,12], c = [0, ...bits]; let syn = 0, o = 0;
+  for (let i = 1; i <= 13; i++) if (c[i]) { o ^= 1; if (i <= 12) syn ^= i; }
+  let ok = true; if (o) { if (syn > 12) ok = false; else if (syn) c[syn] ^= 1; } else if (syn) ok = false;
+  let v = 0; DP.forEach((p, k) => v |= c[p] << k); return { v, ok };
+}
+const fact = n => { if (n < 0 || n !== Math.floor(n) || n > 170) throw Error('n! needs an integer 0 to 170'); let r = 1; for (let k = 2; k <= n; k++) r *= k; return r; };
+const rad = x => CALC.deg ? x * Math.PI / 180 : x, dg = x => CALC.deg ? x * 180 / Math.PI : x;
+const FN = { sin: x => Math.sin(rad(x)), cos: x => Math.cos(rad(x)), tan: x => Math.tan(rad(x)), asin: x => dg(Math.asin(x)), acos: x => dg(Math.acos(x)), atan: x => dg(Math.atan(x)),
+  sinh: Math.sinh, cosh: Math.cosh, tanh: Math.tanh, ln: Math.log, log: Math.log10, exp: Math.exp, sqrt: Math.sqrt, cbrt: Math.cbrt, abs: Math.abs, floor: Math.floor, ceil: Math.ceil, round: Math.round, fact };
+function compile(src) {
+  const s = src.replace(/×/g, '*').replace(/÷/g, '/').replace(/−/g, '-').replace(/π/g, 'pi').replace(/√/g, 'sqrt').replace(/²/g, '^2');
+  const T = s.match(/\d+\.?\d*(?:e[+-]?\d+)?|\.\d+(?:e[+-]?\d+)?|[a-z_]+|[-+*/^%!(),]|\S/gi) || []; let i = 0;
+  const eat = t => { if (T[i] !== t) throw Error('expected ' + t); i++; };
+  const expr = () => { let l = term(); while (T[i] === '+' || T[i] === '-') { const op = T[i++], a = l, r = term(); l = op === '+' ? e => a(e) + r(e) : e => a(e) - r(e); } return l; };
+  const term = () => { let l = unary(); while (T[i] === '*' || T[i] === '/' || T[i] === '%') { const op = T[i++], a = l, r = unary(); l = op === '*' ? e => a(e) * r(e) : op === '/' ? e => a(e) / r(e) : e => a(e) % r(e); } return l; };
+  const unary = () => { if (T[i] === '-') { i++; const f = unary(); return e => -f(e); } if (T[i] === '+') { i++; return unary(); } return power(); };
+  const power = () => { const b = post(); if (T[i] === '^') { i++; const x = unary(); return e => Math.pow(b(e), x(e)); } return b; };
+  const post = () => { let p = primary(); while (T[i] === '!') { i++; const f = p; p = e => fact(f(e)); } return p; };
+  const primary = () => {
+    const t = T[i++]; if (t === undefined) throw Error('expression ends early');
+    if (/^[\d.]/.test(t)) { const v = parseFloat(t); if (isNaN(v)) throw Error('bad number ' + t); return () => v; }
+    if (t === '(') { const f = expr(); eat(')'); return f; }
+    const n = t.toLowerCase();
+    if (T[i] === '(') { if (!FN[n]) throw Error('unknown function ' + t); i++; const a = expr(); eat(')'); return e => FN[n](a(e)); }
+    if (n === 'pi') return () => Math.PI; if (n === 'e') return () => Math.E; if (n === 'ans') return () => CALC.ans; if (n === 'x') return e => e.x;
+    throw Error('unknown ' + t);
+  };
+  const f = expr(); if (i < T.length) throw Error('unexpected ' + T[i]); return f;
+}
+const fnum = v => !isFinite(v) ? 'undefined' : Number.isInteger(v) && Math.abs(v) < 1e15 ? String(v) : String(parseFloat(v.toPrecision(12)));
+const hx2 = a => a.map(x => x.toString(16).padStart(2, '0').toUpperCase()).join(' ');
+function nxEncode(v, ecc) {
+  if (!Number.isInteger(v) || v < 0 || v > Number.MAX_SAFE_INTEGER) throw Error('nx() needs an integer from 0 to 2^53');
+  const by = []; do { by.unshift(v % 256); v = Math.floor(v / 256); } while (v > 0);
+  const out = [0]; by.forEach((b, f) => { if (ecc) { const c = hEnc(b).reduce((a, bit, k) => a | bit << k, 0); out.push(0x26, f, c >> 8, c & 255); } else out.push(0x26, f, b); });
+  return out;
+}
+function nxDecode(b) {
+  if (b[0] !== 0) throw Error('stream must start with 00');
+  for (const w of [3, 4]) {
+    const r = b.slice(1); if (!r.length || r.length % w) continue; let v = 0, ok = true;
+    for (let k = 0; k < r.length / w && ok; k++) {
+      const q = r.slice(k * w, k * w + w); if (q[0] !== 0x26 || q[1] !== k) { ok = false; break; }
+      let byte = q[2]; if (w === 4) { const c = q[2] << 8 | q[3], d = hDec(Array.from({ length: 13 }, (_, j) => (c >> j) & 1)); if (!d.ok) { ok = false; break; } byte = d.v; }
+      v = v * 256 + byte;
+    }
+    if (ok) return { v, ecc: w === 4 };
+  }
+  throw Error('not a valid nx() stream');
+}
+/*ENDCALC*/
+
+/* ---- calculator UI, wired to the shard engine ---- */
+async function runJob(job, N) {
+  const total = job === 'p' ? N : Math.floor((N - 10) / H); state = new Array(60).fill(null);
+  const r = await runPool(job, bounds(total, 60), +$('#nw').value, (i, d) => { state[i] = d; });
+  return { v: r.out.reduce((s, d) => s + d.v, 0), wall: r.wall, ref: KNOWN[job][N] };
+}
+async function exec(src) {
+  const m = src.match(/^\s*(primes|zeros|nx|unnx)\s*\(([\s\S]*)\)\s*$/i);
+  if (!m) { const v = compile(src)({}); return { text: fnum(v), num: v }; }
+  const cmd = m[1].toLowerCase();
+  if (cmd === 'unnx') { const b = m[2].split(/[\s,]+/).filter(Boolean).map(t => parseInt(t, 16)); if (!b.length || b.some(isNaN)) throw Error('unnx() takes hex bytes'); const d = nxDecode(b); CALC.bytes = b; return { text: fnum(d.v) + (d.ecc ? '  (Hamming-wrapped)' : ''), num: d.v }; }
+  const a = compile(m[2])({});
+  if (cmd === 'nx') { const b = nxEncode(a, $('#ecc').checked); CALC.bytes = b; return { text: hx2(b), num: a }; }
+  const job = cmd === 'primes' ? 'p' : 'z';
+  if (!Number.isInteger(a) || a < (job === 'p' ? 2 : 20) || a > (job === 'p' ? 1e9 : 1e5)) throw Error(job === 'p' ? 'primes(N): integer 2 to 1e9' : 'zeros(T): integer 20 to 100000');
+  const r = await runJob(job, a);
+  return { text: r.v.toLocaleString() + (r.ref === undefined ? '' : r.v === r.ref ? '  ✓ matches reference' : '  (reference ' + r.ref.toLocaleString() + ')') + `  · ${(r.wall / 1000).toFixed(2)} s`, num: r.v };
+}
+const tape = []; let rec = false;
+const KEYS = [['DEG','(',')','^','!','⌫'],['sin','cos','tan','asin','acos','atan'],['sinh','cosh','tanh','ln','log','exp'],['√','abs','π','e','x','C'],
+  ['7','8','9','÷','mod','Ans'],['4','5','6','×','primes','zeros'],['1','2','3','−','nx','unnx'],['0','.','EE','+','x²','=']];
+const INS = { '√': 'sqrt(', '÷': '/', '×': '*', '−': '-', mod: '%', Ans: 'ans', EE: 'e', 'x²': '^2', π: 'pi' };
+const ex = $('#expr'), keys = $('#keys');
+function insert(t) { const a = ex.selectionStart ?? ex.value.length, b = ex.selectionEnd ?? a; ex.value = ex.value.slice(0, a) + t + ex.value.slice(b); ex.setSelectionRange(a + t.length, a + t.length); ex.focus(); live(); }
+KEYS.flat().forEach(k => { const b = document.createElement('button'); b.textContent = k; if (/[÷×−+^!%]|mod/.test(k)) b.className = 'op'; if (k === '=') b.className = 'eq'; if (k === 'DEG') b.id = 'degbtn';
+  b.onclick = () => { if (k === '=') return equals(); if (k === 'C') { ex.value = ''; return live(); } if (k === '⌫') { ex.value = ex.value.slice(0, -1); return live(); }
+    if (k === 'DEG') { CALC.deg = !CALC.deg; b.textContent = CALC.deg ? 'DEG' : 'RAD'; $('#x0').value = 0; $('#x1').value = CALC.deg ? 720 : 12.566; return live(); }
+    insert(INS[k] ?? (/^[a-z]{2,}$/.test(k) && k !== 'abs' || k === 'abs' ? k + '(' : k)); };
+  keys.appendChild(b); });
+function live() {
+  const s = ex.value; $('#res').className = 'res';
+  try { if (/^\s*(primes|zeros|nx|unnx)\s*\(/i.test(s)) $('#prev').textContent = 'Press = to run'; else $('#prev').textContent = /\bx\b/i.test(s) ? 'plotting f(x)' : '= ' + fnum(compile(s)({})); }
+  catch (e) { $('#prev').textContent = s.trim() ? '… ' + e.message : ''; }
+  wave();
+}
+async function equals() {
+  const s = ex.value.trim(); if (!s) return; const r = $('#res'); r.className = 'res'; r.textContent = 'computing…';
+  try { const o = await exec(s); r.textContent = o.text; CALC.ans = o.num;
+    if (rec) { tape.push({ t: new Date(), e: s, r: o.text, n: o.num }); drawTape(); } }
+  catch (e) { r.className = 'res bad'; r.textContent = e.message; }
+  wave();
+}
+const ts = d => d.toISOString().slice(11, 23);
+function drawTape() { const p = $('#tape'); p.textContent = tape.length ? tape.map(x => `${ts(x.t)}  ${x.e} = ${x.r}`).join('\n') : 'Tape is empty. Press Record, then = to log results.'; p.scrollTop = p.scrollHeight; }
+$('#recbtn').onclick = () => { rec = !rec; $('#recbtn').textContent = rec ? '■ Stop recording' : '● Record'; $('#recbtn').classList.toggle('rec', rec); };
+$('#clr').onclick = () => { tape.length = 0; drawTape(); wave(); };
+$('#dl').onclick = () => { const q = s => '"' + s.replace(/"/g, '""') + '"', csv = 'time,expression,result\n' + tape.map(x => [x.t.toISOString(), q(x.e), q(x.r)].join(',')).join('\n');
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' })); a.download = 'nullnx_tape.csv'; a.click(); };
+function wave() {
+  const cv = $('#wv'), r = devicePixelRatio || 1, w = cv.clientWidth, h = cv.clientHeight; cv.width = w * r; cv.height = h * r;
+  const g = cv.getContext('2d'); g.setTransform(r, 0, 0, r, 0, 0); g.font = '12px system-ui'; g.fillStyle = '#4a6a6a';
+  const mode = $('#wmode').value; let pts = [], msg = '';
+  if (mode === 'fx') { try { const f = compile(ex.value), a = +$('#x0').value, b = +$('#x1').value; if (!(b > a)) throw Error('x range is empty');
+      for (let k = 0; k <= 500; k++) { const x = a + (b - a) * k / 500, y = f({ x }); if (isFinite(y)) pts.push([x, y]); } if (!pts.length) msg = 'Type an expression using x'; } catch (e) { msg = e.message; } }
+  else if (mode === 'tape') { pts = tape.filter(x => isFinite(x.n)).map((x, k) => [k, x.n]); if (pts.length < 2) msg = 'Record at least two results'; }
+  else { pts = CALC.bytes.map((v, k) => [k, v]); if (!pts.length) msg = 'Run nx() or unnx() first'; }
+  if (msg || !pts.length) { g.fillText(msg, 12, 24); return; }
+  let x0 = pts[0][0], x1 = pts[pts.length - 1][0], y0 = Math.min(...pts.map(p => p[1])), y1 = Math.max(...pts.map(p => p[1])); if (y0 === y1) { y0 -= 1; y1 += 1; } if (x0 === x1) x1 = x0 + 1;
+  const X = x => 30 + (x - x0) / (x1 - x0) * (w - 40), Y = y => h - 18 - (y - y0) / (y1 - y0) * (h - 34);
+  g.strokeStyle = '#0a2020'; for (let k = 0; k <= 4; k++) { const y = y0 + (y1 - y0) * k / 4; g.beginPath(); g.moveTo(30, Y(y)); g.lineTo(w - 10, Y(y)); g.stroke(); g.fillText(parseFloat(y.toPrecision(3)), 2, Y(y) + 4); }
+  if (y0 < 0 && y1 > 0) { g.strokeStyle = '#4a6a6a'; g.beginPath(); g.moveTo(30, Y(0)); g.lineTo(w - 10, Y(0)); g.stroke(); }
+  g.strokeStyle = '#00ffcc'; g.lineWidth = 2; g.beginPath(); pts.forEach(([x, y], k) => { if (mode === 'stream' && k) g.lineTo(X(x), Y(pts[k - 1][1])); k ? g.lineTo(X(x), Y(y)) : g.moveTo(X(x), Y(y)); }); g.stroke(); g.lineWidth = 1;
+  g.fillText(parseFloat(x0.toPrecision(4)), 30, h - 4); g.fillText(parseFloat(x1.toPrecision(4)), w - 50, h - 4);
+}
+ex.oninput = live; ex.onkeydown = e => { if (e.key === 'Enter') equals(); };
+$('#wmode').onchange = $('#x0').oninput = $('#x1').oninput = wave; addEventListener('resize', wave); live();
+
+/* what this browser's timer can actually resolve */
+let best = Infinity; for (let i = 0; i < 20000; i++) { const a = performance.now(); let b = a; while (b === a) b = performance.now(); best = Math.min(best, b - a); }
+$('#clk').textContent = `Timer step ≈ ${(best * 1000).toFixed(1)} µs\nCores reported: ${cores}\nSystem clock: ${new Date().toISOString()}`;
+</script>
+</body>
+</html>
